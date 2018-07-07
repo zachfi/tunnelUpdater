@@ -1,0 +1,11 @@
+[tunnelbroker]
+username = "me"
+password = "mine"
+
+[junos]
+hostname = "firewall.example.com"
+username = "fwupdater"
+keyfile = "/home/cron/.ssh/id_rsa"
+externalInterface = "pp0.0"
+tunnelInterface = "ip-0/0/0.0"
+
