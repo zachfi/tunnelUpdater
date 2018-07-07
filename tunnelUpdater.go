@@ -3,6 +3,7 @@ package main
 import (
 	tunnelbroker "github.com/xaque208/go-tunnelbroker"
 
+	"flag"
 	"fmt"
 	"github.com/scottdware/go-junos"
 	log "github.com/sirupsen/logrus"
@@ -78,10 +79,24 @@ func (j *JuniperDevice) SetTunnelConfigSource(tunnelInterface, address string) {
 }
 
 func main() {
+	var verbose bool
+	var configPath string
+	flag.BoolVar(&verbose, "v", false, "Increase verbosity")
+	flag.StringVar(&configPath, "c", "", "Directory to look for configuration")
+
+	flag.Parse()
+
 	viper.SetConfigName("tunnelUpdater")
 	viper.AddConfigPath(".")
+	if configPath != "" {
+		viper.AddConfigPath(configPath)
+	}
 
-	log.SetLevel(log.DebugLevel)
+	if verbose {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
 
 	err := viper.ReadInConfig()
 	if err != nil {
