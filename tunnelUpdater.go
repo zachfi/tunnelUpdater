@@ -1,15 +1,30 @@
 package main
 
 import (
+	"sync"
+
 	tunnelbroker "github.com/xaque208/go-tunnelbroker"
 
 	"flag"
 	"fmt"
+	"strings"
+
 	"github.com/scottdware/go-junos"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"strings"
 )
+
+type Status struct {
+	ExternalAddress string
+	Router          TunnelStatus
+	Provider        TunnelStatus
+	ProviderID      int
+}
+
+type TunnelStatus struct {
+	NearSideIP string
+	FarSideIP  string
+}
 
 type JuniperDevice struct {
 	HostName   string
@@ -18,9 +33,95 @@ type JuniperDevice struct {
 	PassPhrase string
 }
 
-type junosTunnel struct {
-	Source      string
-	Destination string
+func getStatus(tunnelBrokerClient tunnelbroker.Client, juniperDevice JuniperDevice) (*Status, error) {
+	var status Status
+	var wg sync.WaitGroup
+
+	externalInterface := viper.GetString("junos.externalInterface")
+	tunnelInterface := viper.GetString("junos.tunnelInterface")
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		log.Debug("Reading tunnelbroker status")
+		info, err := tunnelBrokerClient.TunnelInfo()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		log.WithFields(log.Fields{
+			"tunnel_info":  info,
+			"tunnel_count": len(info.Tunnels),
+		}).Debug("tunnel broker status")
+
+		if len(info.Tunnels) > 0 {
+			status.ProviderID = info.Tunnels[0].ID
+			status.Provider.NearSideIP = info.Tunnels[0].ClientV4
+			status.Provider.FarSideIP = info.Tunnels[0].ServerV4
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		log.WithFields(log.Fields{
+			"external_interface": externalInterface,
+			"tunnel_interface":   tunnelInterface,
+		}).Debug("reading interface config")
+
+		session := juniperDevice.Session()
+
+		views, err := session.View("interface")
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		for _, physicalInterface := range views.Interface.Entries {
+			for _, logicalInterface := range physicalInterface.LogicalInterfaces {
+				log.WithFields(log.Fields{
+					"name":             logicalInterface.Name,
+					"address_families": logicalInterface.AddressFamilies,
+				}).Trace("logical_interface")
+
+				if logicalInterface.Name == externalInterface {
+					for _, af := range logicalInterface.AddressFamilies {
+						log.WithFields(log.Fields{
+							"name":       af.Name,
+							"cidr":       af.CIDR,
+							"ip_address": af.IPAddress,
+						}).Debug("address_family")
+
+						if af.Name == "inet" {
+							status.ExternalAddress = af.IPAddress
+						}
+					}
+
+				}
+
+				if logicalInterface.Name == tunnelInterface {
+					parts := strings.Split(logicalInterface.LinkAddress, ":")
+
+					status.Router.FarSideIP = parts[0]
+					status.Router.NearSideIP = parts[1]
+				}
+			}
+		}
+	}()
+
+	wg.Wait()
+
+	if status.Router != status.Provider {
+		log.WithFields(log.Fields{
+			"provider_near":    status.Provider.NearSideIP,
+			"provider_far":     status.Provider.FarSideIP,
+			"router_near":      status.Router.NearSideIP,
+			"router_far":       status.Router.FarSideIP,
+			"external_address": status.ExternalAddress,
+		}).Warn("status does not agree")
+	}
+
+	return &status, nil
 }
 
 func (j *JuniperDevice) Session() *junos.Junos {
@@ -35,37 +136,6 @@ func (j *JuniperDevice) Session() *junos.Junos {
 	}
 
 	return session
-}
-
-func (j *JuniperDevice) InterfaceConfigs(externalInterface, tunnelInterface string) (string, junosTunnel) {
-	session := j.Session()
-
-	views, err := session.View("interface")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	var externalAddress string
-	var tunnelConfig junosTunnel
-
-	for _, pInterface := range views.Interface.Entries {
-		for _, lInterface := range pInterface.LogicalInterfaces {
-			if lInterface.Name == externalInterface {
-				externalAddress = lInterface.IPAddress
-			}
-
-			if lInterface.Name == tunnelInterface {
-				parts := strings.Split(lInterface.LinkAddress, ":")
-
-				tunnelConfig = junosTunnel{
-					Destination: parts[0],
-					Source:      parts[1],
-				}
-			}
-		}
-	}
-
-	return externalAddress, tunnelConfig
 }
 
 func (j *JuniperDevice) SetTunnelConfigSource(tunnelInterface, address string) {
@@ -103,44 +173,41 @@ func main() {
 		log.Fatal(err)
 	}
 
-	tb_client := tunnelbroker.Client{
+	tunnelBrokerClient := tunnelbroker.Client{
 		Username: viper.GetString("tunnelbroker.username"),
 		Password: viper.GetString("tunnelbroker.password"),
 	}
 
-	j_device := JuniperDevice{
+	juniperDevice := JuniperDevice{
 		HostName:   viper.GetString("junos.hostname"),
 		UserName:   viper.GetString("junos.username"),
 		KeyFile:    viper.GetString("junos.keyfile"),
 		PassPhrase: viper.GetString("junos.passphrase"),
 	}
 
-	externalInterface := viper.GetString("junos.externalInterface")
 	tunnelInterface := viper.GetString("junos.tunnelInterface")
 
-	log.Debug("Reading tunnelbroker status")
-	tunnelInfo, err := tb_client.TunnelInfo()
+	status, err := getStatus(tunnelBrokerClient, juniperDevice)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	log.Debug("Reading router interface status")
-	externalAddress, tunnelConfig := j_device.InterfaceConfigs(
-		externalInterface,
-		tunnelInterface,
-	)
+	log.WithFields(log.Fields{
+		"status": status,
+	}).Debug("status config")
 
-	if tunnelInfo.Tunnels[0].ClientV4 != externalAddress {
-		log.Infof("Setting TunnelBroker ClientV4 address to %s", externalAddress)
-		tb_client.UpdateTunnel(tunnelInfo.Tunnels[0].Id, externalAddress)
+	if status.Provider.NearSideIP != status.ExternalAddress {
+		log.Infof("Setting TunnelBroker ClientV4 address to %s", status.ExternalAddress)
+		tunnelBrokerClient.UpdateTunnel(status.ProviderID, status.ExternalAddress)
 	}
 
-	if tunnelConfig.Source != externalAddress {
-		log.Infof("Setting tunnell interface source to external address %s", externalAddress)
-		j_device.SetTunnelConfigSource(
+	if status.Router.NearSideIP != status.ExternalAddress {
+		log.Infof("Setting tunnel interface source to external address %s", status.ExternalAddress)
+		juniperDevice.SetTunnelConfigSource(
 			tunnelInterface,
-			externalAddress,
+			status.ExternalAddress,
 		)
+
 	}
 
 }
