@@ -149,8 +149,8 @@ github.com/prometheus/tsdb v0.7.1/go.mod h1:qhTCs0VvXwvX/y3TZrWD7rabWM+ijKTux40T
 github.com/rogpeppe/fastuuid v0.0.0-20150106093220-6724a57986af/go.mod h1:XWv6SoW27p1b0cqNHllgS5HIMJraePCO15w5zCzIWYg=
 github.com/rogpeppe/go-internal v1.3.0/go.mod h1:M8bDsm7K2OlrFYOpmOWEs/qY81heoFRclV5y23lUDJ4=
 github.com/ryanuber/columnize v0.0.0-20160712163229-9b3edd62028f/go.mod h1:sm1tb6uqfes/u+d4ooFouqFdy9/2g9QGwK3SQygK0Ts=
-github.com/scottdware/go-junos v0.0.0-20191101184514-da1ec4631b03 h1:/j89wNUnNLvazyjcEcP7FfSXHNRxt/7q1nrVhNHwUg8=
-github.com/scottdware/go-junos v0.0.0-20191101184514-da1ec4631b03/go.mod h1:HyXZ8sqZbS3YOTwqstgK9EQ2OGkTcPOg84RZKVUGJhQ=
+github.com/scottdware/go-junos v0.0.0-20200809143445-1805793fac10 h1:SSdK8KJfUeNeqlLbtKve4wC0O3JaVT87cxLiJ3x31lQ=
+github.com/scottdware/go-junos v0.0.0-20200809143445-1805793fac10/go.mod h1:HyXZ8sqZbS3YOTwqstgK9EQ2OGkTcPOg84RZKVUGJhQ=
 github.com/scottdware/go-rested v0.0.0-20160313143639-93e152ef32a6 h1:299Uob4OQNsj4PcX5Lz0zrEUA3QJQR7cUb0QGKOCCMA=
 github.com/scottdware/go-rested v0.0.0-20160313143639-93e152ef32a6/go.mod h1:Pb2bmyrwODgla27iei9cFCcCyVCly15wW4rLEbd0RdM=
 github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529/go.mod h1:DxrIzT+xaE7yg65j358z/aeFdxmN0P9QXhEzd20vsDc=
